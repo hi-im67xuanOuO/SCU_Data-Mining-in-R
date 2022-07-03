@@ -1,0 +1,138 @@
+﻿rm(list = ls())       #清除右邊視窗變數
+cat('\014')           #清除console視窗內容
+
+#安裝tm套件
+#install.packages("tm")
+#載入tm套件
+library(tm) 
+
+
+getSources() #告訴您R的語料庫來源形式可以是哪些哪些
+getReaders() #告訴您R可以讀的格式有哪些哪些
+
+setwd("C:/data")
+
+#透過某資料夾中的160個英文旅館住宿評論檔案，副檔名為.txt
+cp_myFiles = Corpus(DirSource("hotel_160_en/"))
+cp_myFiles
+cp_myFiles[[1]]$content
+cp_myFiles[[2]]$content
+
+#以第五篇評論文章來觀察
+cp_myFiles[[5]]$content
+
+#先將大寫字母全部轉換成小寫英文字母
+cp_myFiles=tm_map(cp_myFiles,content_transformer(tolower))
+cp_myFiles[[5]]$content
+
+#先將數字移除掉
+cp_myFiles=tm_map(cp_myFiles,removeNumbers)
+cp_myFiles[[5]]$content
+
+#先將標點符號移除掉
+cp_myFiles=tm_map(cp_myFiles,removePunctuation)
+cp_myFiles[[5]]$content
+
+#先將停用字stopwords移除掉
+cp_myFiles=tm_map(cp_myFiles,removeWords,stopwords())
+cp_myFiles[[5]]$content
+
+#去掉不需要多餘的空白字元
+cp_myFiles=tm_map(cp_myFiles,stripWhitespace)
+cp_myFiles[[5]]$content
+
+#所以接下來要做Stemming工作，R語言需要另一個套件SnowballC
+#install.packages("SnowballC")   #安裝SnowballC套件
+library(SnowballC)               #載入SnowballC套件
+
+#執行Stemming工作
+cp_myFiles=tm_map(cp_myFiles,stemDocument)
+cp_myFiles[[5]]$content
+
+#為語料庫fdocs建立一個DocumentTermMatrix矩陣
+fDTM=DocumentTermMatrix(cp_myFiles)
+inspect(fDTM)
+inspect(fDTM[1:5,1:6]) #查看矩陣中的前五列與前五行
+
+
+#*******************************************************
+#R語言中有預設的tfidf計算公式可以直接使用，但是此公式
+#為加權過的值，與一般Text Mining學理上所介紹的tfidf定義
+#的公式計算結果有些差異
+#*******************************************************
+fDTM_R_tfidf = DocumentTermMatrix(cp_myFiles,control = list(weighting=weightTfIdf))
+inspect(fDTM_R_tfidf[1:5,1:6])
+
+#**************
+#視覺化文字雲
+#**************
+#install.packages("wordcloud")  #安裝wordcloud套件
+library(wordcloud)              #載入wordcloud套件
+
+myterm_f = sort(colSums(as.matrix(fDTM)),decreasing = TRUE)
+head(myterm_f,10)
+wordcloud(names(myterm_f),myterm_f,min.freq = 10)
+
+
+windows()  #另外開啟一個視窗顯示文字雲
+wordcloud(names(myterm_f),myterm_f,min.freq = 10,colors = 1:length(names(myterm_f)))
+
+
+#計算目前fDTM_R_tfidf矩陣中每一個英文字
+#在160份文件中的tfidf值的加總
+fmyterm_R_tfidf = sort(colSums(as.matrix(fDTM_R_tfidf)),decreasing = TRUE)
+head(fmyterm_R_tfidf,3)
+#在R中繪製文字雲
+wordcloud(names(fmyterm_R_tfidf),fmyterm_R_tfidf,min.freq = 0.5,random.order = F)
+
+#在R中繪製文字雲的另一個方法
+windows()  #另外開啟一個視窗顯示文字雲
+wordcloud(names(fmyterm_R_tfidf),fmyterm_R_tfidf,min.freq = 0.5,colors = 1:length(names(fmyterm_R_tfidf)),random.order = T)
+
+
+
+#****************************************
+#計算Text Mining學術上常用的tfidf權重值
+#先將語料庫中所建立的fDTM轉成可以加減乘除
+#等運算的一般矩陣myDTM
+#****************************************
+
+myDTM = as.matrix(fDTM)
+fmyDTM_TM_tfidf=myDTM
+myrs=rowSums(fmyDTM_TM_tfidf)
+# myDTM/myDTM
+# colSums(myDTM/myDTM)
+# is.nan(myDTM/myDTM)
+# replace(myDTM/myDTM,is.nan(myDTM/myDTM),0)
+mycs=colSums(replace(fmyDTM_TM_tfidf/fmyDTM_TM_tfidf,is.nan(fmyDTM_TM_tfidf/fmyDTM_TM_tfidf),0))
+
+myidf=log10(nrow(fmyDTM_TM_tfidf)/mycs)
+
+for (i in 1:nrow(fmyDTM_TM_tfidf))
+{
+  fmyDTM_TM_tfidf[i,]=(fmyDTM_TM_tfidf[i,]/myrs[i])*myidf
+}
+
+fmyDTM_TM_tfidf
+
+#根據文件距離做集群Clustering
+mydist=dist(fmyDTM_TM_tfidf)  #距離矩陣
+myhc=hclust(mydist,method = "single")  #階層式集群法
+plot(myhc)  #繪製集群圖
+abline(h=0.06, col="red")
+
+
+#計算目前myDTM矩陣中每一個英文字在五份文件中的總次數
+myterm_tdidf = sort(colSums(fmyDTM_TM_tfidf),decreasing = TRUE)
+head(fmyDTM_TM_tfidf,10)
+wordcloud(names(myterm_tdidf),myterm_tdidf,min.freq = 0.1,random.order = F)  #R中顯示文字雲
+
+
+windows()  #另外開啟一個視窗顯示文字雲
+wordcloud(names(myterm_tdidf),myterm_tdidf,min.freq = 0.4,colors = 1:length(names(myterm_tdidf)))
+
+
+#去除低於95%的稀疏詞條
+a95=removeSparseTerms(fDTM_R_tfidf,0.95)
+dim(a95)
+
